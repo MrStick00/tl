@@ -1,373 +1,140 @@
-<!doctype html>
-<html lang="pt-PT">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Teleprompter – Match por Voz</title>
-  <style>
-    :root{
-      --bg:#0b0f14; --panel:#101823; --text:#e7eef7; --muted:#9bb0c6;
-      --done:#3ddc84; --current:#ffd166; --border:rgba(255,255,255,.08);
-    }
-    *{box-sizing:border-box}
-    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}
-    header{position:sticky;top:0;z-index:10;background:linear-gradient(to bottom, rgba(11,15,20,.95), rgba(11,15,20,.75));backdrop-filter:blur(10px);border-bottom:1px solid var(--border)}
-    .wrap{max-width:980px;margin:0 auto;padding:14px 16px}
-    .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
-    .btn{background:var(--panel);border:1px solid var(--border);color:var(--text);padding:10px 12px;border-radius:10px;cursor:pointer;font-weight:650}
-    .btn:hover{filter:brightness(1.08)}
-    .btn:disabled{opacity:.55;cursor:not-allowed}
-    .chip{padding:8px 10px;border:1px solid var(--border);background:rgba(16,24,35,.55);border-radius:999px;color:var(--muted);font-size:13px}
-    .slider{display:flex;align-items:center;gap:8px}
-    .slider label{font-size:13px;color:var(--muted)}
-    input[type="range"]{width:160px}
-    main{max-width:980px;margin:0 auto;padding:18px 16px}
-    .viewer{
-      background:rgba(16,24,35,.35);
-      border:1px solid var(--border);
-      border-radius:16px;
-      padding:18px;
-      min-height:60vh;
-      line-height:1.9;
-      font-size:22px;
-      overflow:hidden;
-    }
-    .word{padding:2px 2px;border-radius:6px;scroll-margin:160px}
-    .done{color:var(--done)}
-    .current{background:rgba(255,209,102,.18);outline:1px solid rgba(255,209,102,.35)}
-    .punct{opacity:.85}
-    .hint{margin-top:12px;color:var(--muted);font-size:13px;line-height:1.4}
-    .tiny{font-size:12px;color:var(--muted)}
-    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-  </style>
-</head>
-<body>
-<header>
-  <div class="wrap">
-    <div class="row">
-      <input id="file" type="file" accept=".txt" class="btn" style="padding:9px 10px" />
-      <button id="start" class="btn">🎙️ Start</button>
-      <button id="stop" class="btn" disabled>⏹ Stop</button>
-      <button id="reset" class="btn">🔁 Reset</button>
-      <button id="back" class="btn">⬅ Palavra</button>
-      <button id="next" class="btn">Palavra ➡</button>
-      <span id="status" class="chip">Sem guião carregado</span>
-    </div>
-
-    <div class="row" style="margin-top:10px">
-      <div class="slider">
-        <label for="window">Janela de match</label>
-        <input id="window" type="range" min="10" max="120" value="50" />
-        <span id="windowVal" class="chip">50</span>
-      </div>
-      <div class="slider">
-        <label for="autoScroll">Auto-scroll</label>
-        <input id="autoScroll" type="checkbox" checked />
-        <span class="chip">ON</span>
-      </div>
-      <div class="slider">
-        <label for="lang">Idioma</label>
-        <select id="lang" class="btn" style="padding:8px 10px">
-          <option value="pt-PT" selected>pt-PT</option>
-          <option value="pt-BR">pt-BR</option>
-          <option value="en-US">en-US</option>
-        </select>
-      </div>
-      <span class="chip">Atalho: Espaço avança • Shift+Espaço recua</span>
-    </div>
-
-    <div class="tiny" style="margin-top:10px">
-      Dica: melhor em <b>Chrome/Edge</b> com HTTPS. Se o micro “falhar”, usa o avanço manual.
-    </div>
-  </div>
-</header>
-
-<main>
-  <div id="viewer" class="viewer"></div>
-  <div class="hint">
-    <div><b>Como funciona:</b> o browser transcreve o que dizes e o script faz match tolerante com as palavras a partir da posição atual.</div>
-    <div class="mono tiny" id="lastHeard">Último ouvido: —</div>
-  </div>
-</main>
-
 <script>
-  // ---------- Utilitários ----------
-  const stripDiacritics = (s) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  const norm = (s) =>
-    stripDiacritics(String(s || "")
-      .toLowerCase()
-      .replace(/[“”"']/g,"")
-      .replace(/[^a-zA-ZÀ-ÿ0-9\s-]/g," ") // remove pontuação (mantém letras/nums/hífen)
-      .replace(/\s+/g," ")
-      .trim()
-    );
+const viewer = document.getElementById("viewer");
+const file = document.getElementById("file");
+const startBtn = document.getElementById("start");
+const stopBtn = document.getElementById("stop");
+const status = document.getElementById("status");
+const lastHeard = document.getElementById("lastHeard");
 
-  // Similaridade simples (Jaccard de bigramas) - leve e bom o suficiente
-  function similarity(a, b){
-    a = norm(a); b = norm(b);
-    if(!a || !b) return 0;
-    if(a === b) return 1;
-    const bigrams = (t) => {
-      const s = ` ${t} `;
-      const set = new Set();
-      for(let i=0;i<s.length-1;i++) set.add(s.slice(i,i+2));
-      return set;
-    };
-    const A = bigrams(a), B = bigrams(b);
-    let inter = 0;
-    for (const x of A) if (B.has(x)) inter++;
-    const union = A.size + B.size - inter;
-    return union ? inter/union : 0;
-  }
+let words = [];
+let index = 0;
+let recognition;
+let listening = false;
 
-  // Tokenização mantendo pontuação como token separado para render
-  function tokenize(text){
-    const tokens = [];
-    const re = /(\s+|[A-Za-zÀ-ÿ0-9]+(?:-[A-Za-zÀ-ÿ0-9]+)*|[^\sA-Za-zÀ-ÿ0-9])/g;
-    let m;
-    while((m = re.exec(text)) !== null){
-      const t = m[0];
-      if(/^\s+$/.test(t)) continue;
-      const isWord = /^[A-Za-zÀ-ÿ0-9]+(?:-[A-Za-zÀ-ÿ0-9]+)*$/.test(t);
-      tokens.push({ raw: t, isWord, key: isWord ? norm(t) : "" });
-    }
-    return tokens;
-  }
+// ---------------- NORMALIZAÇÃO ----------------
+const normalize = s =>
+  s.toLowerCase()
+   .normalize("NFD")
+   .replace(/[\u0300-\u036f]/g, "")
+   .replace(/[.,!?;:()"']/g, "")
+   .trim();
 
-  // ---------- Estado ----------
-  let tokens = [];
-  let wordIndexes = []; // índices em tokens que são palavras
-  let currentWordPos = 0; // posição dentro de wordIndexes
-  let recognition = null;
-  let listening = false;
+// ---------------- RENDER ----------------
+function render(text){
+  viewer.innerHTML = "";
+  words = text.split(/\s+/);
+  index = 0;
 
-  // ---------- UI ----------
-  const $ = (id) => document.getElementById(id);
-  const viewer = $("viewer");
-  const file = $("file");
-  const startBtn = $("start");
-  const stopBtn = $("stop");
-  const resetBtn = $("reset");
-  const backBtn = $("back");
-  const nextBtn = $("next");
-  const status = $("status");
-  const lastHeard = $("lastHeard");
-  const windowSlider = $("window");
-  const windowVal = $("windowVal");
-  const autoScroll = $("autoScroll");
-  const langSel = $("lang");
-
-  windowSlider.addEventListener("input", () => windowVal.textContent = windowSlider.value);
-
-  function render(){
-    viewer.innerHTML = "";
-    wordIndexes = [];
-    tokens.forEach((tk, idx) => {
-      const span = document.createElement("span");
-      span.textContent = tk.raw;
-      span.className = "word" + (tk.isWord ? "" : " punct");
-      span.dataset.idx = idx;
-
-      if(tk.isWord){
-        wordIndexes.push(idx);
-      }
-      viewer.appendChild(span);
-      viewer.appendChild(document.createTextNode(" "));
-    });
-
-    updateHighlight(true);
-  }
-
-  function updateHighlight(center=false){
-    const spans = viewer.querySelectorAll(".word");
-    spans.forEach(s => { s.classList.remove("done","current"); });
-
-    // marcar done + current só nas palavras
-    for(let i=0;i<wordIndexes.length;i++){
-      const tokenIdx = wordIndexes[i];
-      const span = viewer.querySelector(`.word[data-idx="${tokenIdx}"]`);
-      if(!span) continue;
-      if(i < currentWordPos) span.classList.add("done");
-      if(i === currentWordPos) span.classList.add("current");
-    }
-
-    if(autoScroll.checked && center){
-      const tokenIdx = wordIndexes[currentWordPos];
-      const span = viewer.querySelector(`.word[data-idx="${tokenIdx}"]`);
-      if(span) span.scrollIntoView({behavior:"smooth", block:"center"});
-    }
-
-    status.textContent = tokens.length
-      ? `Palavra: ${Math.min(currentWordPos+1, wordIndexes.length)}/${wordIndexes.length}`
-      : `Sem guião carregado`;
-  }
-
-  function step(delta){
-    currentWordPos = Math.max(0, Math.min(wordIndexes.length-1, currentWordPos + delta));
-    updateHighlight(true);
-  }
-
-  // ---------- Upload ----------
-  file.addEventListener("change", async (e) => {
-    const f = e.target.files?.[0];
-    if(!f) return;
-    const text = await f.text();
-    tokens = tokenize(text);
-    currentWordPos = 0;
-    render();
-    status.textContent = `Guião carregado (${wordIndexes.length} palavras)`;
+  words.forEach((w,i)=>{
+    const span=document.createElement("span");
+    span.textContent=w+" ";
+    span.id="w"+i;
+    viewer.appendChild(span);
   });
 
-  // ---------- Controlo manual ----------
-  nextBtn.addEventListener("click", () => step(+1));
-  backBtn.addEventListener("click", () => step(-1));
-  resetBtn.addEventListener("click", () => { currentWordPos = 0; updateHighlight(true); });
+  highlight();
+}
 
-  window.addEventListener("keydown", (e) => {
-    if(e.code === "Space"){
-      e.preventDefault();
-      step(e.shiftKey ? -1 : +1);
-    } else if(e.code === "ArrowRight") step(+1);
-    else if(e.code === "ArrowLeft") step(-1);
+function highlight(){
+  words.forEach((_,i)=>{
+    const el=document.getElementById("w"+i);
+    el.style.color = i < index ? "#3ddc84" : "#e7eef7";
+    el.style.background = i===index ? "rgba(255,209,102,.25)" : "transparent";
   });
 
-  // ---------- Matching por voz ----------
-  function ensureRecognition(){
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if(!SR){
-      alert("O teu browser não suporta SpeechRecognition. Usa Chrome/Edge.");
-      return null;
-    }
-    const r = new SR();
-    r.continuous = true;
-    r.interimResults = true;
-    r.lang = langSel.value;
+  const current=document.getElementById("w"+index);
+  if(current) current.scrollIntoView({behavior:"smooth",block:"center"});
+}
 
-    r.onresult = (event) => {
-      // juntar o texto mais recente (interim + final)
-      let transcript = "";
-      for(let i=event.resultIndex; i<event.results.length; i++){
-        transcript += event.results[i][0].transcript + " ";
+// ---------------- MATCHER (NOVO) ----------------
+function tryAdvance(transcript){
+
+  const spoken = normalize(transcript).split(" ").filter(Boolean);
+  if(spoken.length < 2) return;
+
+  // apenas olha 8 palavras à frente
+  const lookAhead = 8;
+
+  for(let offset=0; offset<lookAhead; offset++){
+
+    const a = words[index+offset];
+    const b = words[index+offset+1];
+    if(!a || !b) break;
+
+    const targetPair = normalize(a+" "+b);
+
+    for(let i=0;i<spoken.length-1;i++){
+      const spokenPair = spoken[i]+" "+spoken[i+1];
+
+      // match aproximado
+      if(similar(spokenPair,targetPair)){
+        index += offset+2;
+        highlight();
+        return;
       }
-      transcript = transcript.trim();
-      if(!transcript) return;
-
-      lastHeard.textContent = "Último ouvido: " + transcript;
-
-      // Extrair palavras do transcript
-      const heardWords = norm(transcript).split(" ").filter(Boolean);
-      if(!heardWords.length) return;
-
-      // Tentar avançar baseado nas últimas palavras ouvidas
-      advanceByHeard(heardWords);
-    };
-
-    r.onerror = (e) => {
-      // erros comuns: "not-allowed", "no-speech", "aborted"
-      status.textContent = `Erro de voz: ${e.error}`;
-      if(e.error === "not-allowed"){
-        alert("Permite o microfone no browser (site precisa de HTTPS).");
-      }
-    };
-
-    r.onend = () => {
-      if(listening){
-        // auto-restart para aguentar sessões longas
-        try{ r.start(); } catch {}
-      }
-    };
-
-    return r;
-  }
-
-  // Estratégia:
-  // - Olhar para uma janela (ex: 50 palavras) a partir da posição atual
-  // - Procurar a melhor correspondência de uma sequência curta (1..N) das palavras ouvidas
-  // - Se encontrar com score bom, avançar a posição para depois do match
-  function advanceByHeard(heardWords){
-    if(!tokens.length || !wordIndexes.length) return;
-
-    const win = parseInt(windowSlider.value, 10);
-    const start = currentWordPos;
-    const end = Math.min(wordIndexes.length, currentWordPos + win);
-
-    // vamos usar as últimas 6 palavras ouvidas (mais estável)
-    const tail = heardWords.slice(-6);
-
-    // tentar casar sequências de 3, 2, 1 palavras (mais robusto)
-    const candidates = [];
-    for(let n = Math.min(3, tail.length); n>=1; n--){
-      candidates.push(tail.slice(-n));
-    }
-
-    let best = { score: 0, newPos: null };
-
-    for(const seq of candidates){
-      const seqStr = seq.join(" ");
-      for(let i=start; i<end; i++){
-        // construir string de n palavras do guião a partir de i
-        let scriptSeq = [];
-        for(let k=0;k<seq.length;k++){
-          const idx = i + k;
-          if(idx >= wordIndexes.length) break;
-          const tokenIdx = wordIndexes[idx];
-          scriptSeq.push(tokens[tokenIdx].key);
-        }
-        if(scriptSeq.length !== seq.length) continue;
-
-        const scriptStr = scriptSeq.join(" ");
-        const score = similarity(seqStr, scriptStr);
-
-        if(score > best.score){
-          best = { score, newPos: i + seq.length };
-        }
-      }
-
-      // se já achou um match muito bom, não precisa continuar
-      if(best.score >= 0.86) break;
-    }
-
-    // threshold ajustável: 0.78 funciona bem para português com ruído moderado
-    if(best.newPos !== null && best.score >= 0.78){
-      currentWordPos = Math.min(best.newPos, wordIndexes.length-1);
-      updateHighlight(true);
     }
   }
+}
 
-  // ---------- Start/Stop ----------
-  function canListen(){
-    return tokens.length && wordIndexes.length;
+// ---------------- SIMILARIDADE ----------------
+function similar(a,b){
+  if(a===b) return true;
+
+  // tolerância para erros pequenos
+  let score=0;
+  const aw=a.split(" ");
+  const bw=b.split(" ");
+
+  for(let i=0;i<Math.min(aw.length,bw.length);i++){
+    if(aw[i].startsWith(bw[i].slice(0,3))) score++;
   }
 
-  startBtn.addEventListener("click", () => {
-    if(!canListen()){
-      alert("Carrega primeiro um ficheiro .txt com o teu guião.");
-      return;
+  return score>=1;
+}
+
+// ---------------- SPEECH ----------------
+function startRecognition(){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SR();
+  recognition.lang="pt-BR";
+  recognition.continuous=true;
+  recognition.interimResults=false;
+
+  recognition.onresult=(e)=>{
+    const res=e.results[e.results.length-1][0].transcript;
+    lastHeard.textContent="Ouvido: "+res;
+    tryAdvance(res);
+  };
+
+  recognition.onend=()=>{
+    if(listening){
+      try{recognition.start();}catch{}
     }
-    if(listening) return;
+  };
 
-    recognition = recognition || ensureRecognition();
-    if(!recognition) return;
+  recognition.onerror=(e)=>{
+    status.textContent="Erro: "+e.error;
+  };
 
-    recognition.lang = langSel.value;
-    listening = true;
-    startBtn.disabled = true;
-    stopBtn.disabled = false;
-    status.textContent = "A ouvir… (fala normalmente)";
+  recognition.start();
+}
 
-    try{ recognition.start(); } catch {}
-  });
+// ---------------- CONTROLOS ----------------
+file.onchange=async e=>{
+  const txt=await e.target.files[0].text();
+  render(txt);
+  status.textContent="Guião carregado";
+};
 
-  stopBtn.addEventListener("click", () => {
-    listening = false;
-    startBtn.disabled = false;
-    stopBtn.disabled = true;
-    status.textContent = "Parado";
-    try{ recognition && recognition.stop(); } catch {}
-  });
+startBtn.onclick=()=>{
+  listening=true;
+  startRecognition();
+  status.textContent="A ouvir...";
+};
 
-  // inicial
-  windowVal.textContent = windowSlider.value;
+stopBtn.onclick=()=>{
+  listening=false;
+  recognition.stop();
+  status.textContent="Parado";
+};
 </script>
-</body>
-</html>
