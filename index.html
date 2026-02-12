@@ -1,3 +1,95 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Teleprompter – Match por Voz</title>
+  <style>
+    :root{
+      --bg:#0b0f14; --panel:#101823; --text:#e7eef7; --muted:#9bb0c6;
+      --done:#3ddc84; --current:#ffd166; --border:rgba(255,255,255,.08);
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}
+    header{position:sticky;top:0;z-index:10;background:linear-gradient(to bottom, rgba(11,15,20,.95), rgba(11,15,20,.75));backdrop-filter:blur(10px);border-bottom:1px solid var(--border)}
+    .wrap{max-width:980px;margin:0 auto;padding:14px 16px}
+    .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+    .btn{background:var(--panel);border:1px solid var(--border);color:var(--text);padding:10px 12px;border-radius:10px;cursor:pointer;font-weight:650}
+    .btn:hover{filter:brightness(1.08)}
+    .btn:disabled{opacity:.55;cursor:not-allowed}
+    .chip{padding:8px 10px;border:1px solid var(--border);background:rgba(16,24,35,.55);border-radius:999px;color:var(--muted);font-size:13px}
+    .slider{display:flex;align-items:center;gap:8px}
+    .slider label{font-size:13px;color:var(--muted)}
+    input[type="range"]{width:160px}
+    main{max-width:980px;margin:0 auto;padding:18px 16px}
+    .viewer{
+      background:rgba(16,24,35,.35);
+      border:1px solid var(--border);
+      border-radius:16px;
+      padding:18px;
+      min-height:60vh;
+      line-height:1.9;
+      font-size:22px;
+      overflow:hidden;
+    }
+    .word{padding:2px 2px;border-radius:6px;scroll-margin:160px}
+    .done{color:var(--done)}
+    .current{background:rgba(255,209,102,.18);outline:1px solid rgba(255,209,102,.35)}
+    .punct{opacity:.85}
+    .hint{margin-top:12px;color:var(--muted);font-size:13px;line-height:1.4}
+    .tiny{font-size:12px;color:var(--muted)}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  </style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="row">
+      <input id="file" type="file" accept=".txt" class="btn" style="padding:9px 10px" />
+      <button id="start" class="btn">🎙️ Start</button>
+      <button id="stop" class="btn" disabled>⏹ Stop</button>
+      <button id="reset" class="btn">🔁 Reset</button>
+      <button id="back" class="btn">⬅ Palavra</button>
+      <button id="next" class="btn">Palavra ➡</button>
+      <span id="status" class="chip">Sem guião carregado</span>
+    </div>
+
+    <div class="row" style="margin-top:10px">
+      <div class="slider">
+        <label for="window">Janela de match</label>
+        <input id="window" type="range" min="10" max="120" value="50" />
+        <span id="windowVal" class="chip">50</span>
+      </div>
+      <div class="slider">
+        <label for="autoScroll">Auto-scroll</label>
+        <input id="autoScroll" type="checkbox" checked />
+        <span class="chip">ON</span>
+      </div>
+      <div class="slider">
+        <label for="lang">Idioma</label>
+        <select id="lang" class="btn" style="padding:8px 10px">
+          <option value="pt-PT" selected>pt-PT</option>
+          <option value="pt-BR">pt-BR</option>
+          <option value="en-US">en-US</option>
+        </select>
+      </div>
+      <span class="chip">Atalho: Espaço avança • Shift+Espaço recua</span>
+    </div>
+
+    <div class="tiny" style="margin-top:10px">
+      Dica: melhor em <b>Chrome/Edge</b> com HTTPS. Se o micro “falhar”, usa o avanço manual.
+    </div>
+  </div>
+</header>
+
+<main>
+  <div id="viewer" class="viewer"></div>
+  <div class="hint">
+    <div><b>Como funciona:</b> o browser transcreve o que dizes e o script faz match tolerante com as palavras a partir da posição atual.</div>
+    <div class="mono tiny" id="lastHeard">Último ouvido: —</div>
+  </div>
+</main>
+
 <script>
 const viewer = document.getElementById("viewer");
 const file = document.getElementById("file");
@@ -138,3 +230,6 @@ stopBtn.onclick=()=>{
   status.textContent="Parado";
 };
 </script>
+
+</body>
+</html>
