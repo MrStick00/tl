@@ -285,51 +285,54 @@
   // - Procurar a melhor correspondência de uma sequência curta (1..N) das palavras ouvidas
   // - Se encontrar com score bom, avançar a posição para depois do match
   function advanceByHeard(heardWords){
-  if(!tokens.length || !wordIndexes.length) return;
+    if(!tokens.length || !wordIndexes.length) return;
 
-  // só analisamos as últimas palavras ouvidas
-  const spoken = heardWords.slice(-5);
-  if(spoken.length < 2) return;
+    const win = parseInt(windowSlider.value, 10);
+    const start = currentWordPos;
+    const end = Math.min(wordIndexes.length, currentWordPos + win);
 
-  // vamos comparar APENAS com as próximas palavras esperadas
-  const lookahead = 5;
+    // vamos usar as últimas 6 palavras ouvidas (mais estável)
+    const tail = heardWords.slice(-6);
 
-  for(let offset = 0; offset < lookahead; offset++){
-
-    const scriptSeq = [];
-    for(let k=0;k<spoken.length;k++){
-      const idx = currentWordPos + offset + k;
-      if(idx >= wordIndexes.length) break;
-
-      const tokenIdx = wordIndexes[idx];
-      scriptSeq.push(tokens[tokenIdx].key);
+    // tentar casar sequências de 3, 2, 1 palavras (mais robusto)
+    const candidates = [];
+    for(let n = Math.min(3, tail.length); n>=1; n--){
+      candidates.push(tail.slice(-n));
     }
 
-    if(scriptSeq.length < 2) continue;
+    let best = { score: 0, newPos: null };
 
-    const spokenStr = spoken.join(" ");
-    const scriptStr = scriptSeq.join(" ");
+    for(const seq of candidates){
+      const seqStr = seq.join(" ");
+      for(let i=start; i<end; i++){
+        // construir string de n palavras do guião a partir de i
+        let scriptSeq = [];
+        for(let k=0;k<seq.length;k++){
+          const idx = i + k;
+          if(idx >= wordIndexes.length) break;
+          const tokenIdx = wordIndexes[idx];
+          scriptSeq.push(tokens[tokenIdx].key);
+        }
+        if(scriptSeq.length !== seq.length) continue;
 
-    const score = similarity(spokenStr, scriptStr);
+        const scriptStr = scriptSeq.join(" ");
+        const score = similarity(seqStr, scriptStr);
 
-    // só aceita se estiver PERTO da posição atual
-    if(score > 0.65){
-
-      // IMPORTANTÍSSIMO:
-      // nunca permitir saltos grandes
-      const jump = offset + spoken.length;
-
-      if(jump <= 5){
-        currentWordPos += jump;
-        currentWordPos = Math.min(currentWordPos, wordIndexes.length-1);
-        updateHighlight(true);
+        if(score > best.score){
+          best = { score, newPos: i + seq.length };
+        }
       }
 
-      return;
+      // se já achou um match muito bom, não precisa continuar
+      if(best.score >= 0.86) break;
+    }
+
+    // threshold ajustável: 0.78 funciona bem para português com ruído moderado
+    if(best.newPos !== null && best.score >= 0.78){
+      currentWordPos = Math.min(best.newPos, wordIndexes.length-1);
+      updateHighlight(true);
     }
   }
-}
-
 
   // ---------- Start/Stop ----------
   function canListen(){
