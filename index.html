@@ -285,20 +285,51 @@
   // - Procurar a melhor correspondência de uma sequência curta (1..N) das palavras ouvidas
   // - Se encontrar com score bom, avançar a posição para depois do match
   function advanceByHeard(heardWords){
-    if(!tokens.length || !wordIndexes.length) return;
+  if(!tokens.length || !wordIndexes.length) return;
 
-    const win = parseInt(windowSlider.value, 10);
-    const start = currentWordPos;
-    const end = Math.min(wordIndexes.length, currentWordPos + win);
+  // só analisamos as últimas palavras ouvidas
+  const spoken = heardWords.slice(-5);
+  if(spoken.length < 2) return;
 
-    // vamos usar as últimas 6 palavras ouvidas (mais estável)
-    const tail = heardWords.slice(-6);
+  // vamos comparar APENAS com as próximas palavras esperadas
+  const lookahead = 5;
 
-    // tentar casar sequências de 3, 2, 1 palavras (mais robusto)
-    const candidates = [];
-    for(let n = Math.min(3, tail.length); n>=1; n--){
-      candidates.push(tail.slice(-n));
+  for(let offset = 0; offset < lookahead; offset++){
+
+    const scriptSeq = [];
+    for(let k=0;k<spoken.length;k++){
+      const idx = currentWordPos + offset + k;
+      if(idx >= wordIndexes.length) break;
+
+      const tokenIdx = wordIndexes[idx];
+      scriptSeq.push(tokens[tokenIdx].key);
     }
+
+    if(scriptSeq.length < 2) continue;
+
+    const spokenStr = spoken.join(" ");
+    const scriptStr = scriptSeq.join(" ");
+
+    const score = similarity(spokenStr, scriptStr);
+
+    // só aceita se estiver PERTO da posição atual
+    if(score > 0.65){
+
+      // IMPORTANTÍSSIMO:
+      // nunca permitir saltos grandes
+      const jump = offset + spoken.length;
+
+      if(jump <= 5){
+        currentWordPos += jump;
+        currentWordPos = Math.min(currentWordPos, wordIndexes.length-1);
+        updateHighlight(true);
+      }
+
+      return;
+    }
+  }
+}
+
 
     let best = { score: 0, newPos: null };
 
